@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Randevu widget demosu</title>
+<style>
+  /* Bu sayfa BİLEREK saldırgan CSS yazıyor. Widget başkasının sitesinde
+     çalışacak ve o sitede böyle kurallar var: her şeyi ezen bir yıldız
+     seçici, bütün butonları sıfırlayan bir tema, dev bir yazı tipi.
+     Shadow DOM sınırı bunların hiçbirini içeri almamalı. */
+  * { box-sizing: content-box; font-family: "Comic Sans MS", cursive; }
+  button { all: unset; background: red !important; color: yellow !important; }
+  input { border: 5px dashed magenta !important; }
+
+  body {
+    margin: 0; padding: 40px 20px; background: #f2f0ec; color: #1a1a1a;
+    font: 16px/1.6 system-ui, sans-serif;
+  }
+  .sayfa { max-width: 860px; margin: 0 auto; }
+  h1 { font-family: system-ui, sans-serif; font-size: 28px; margin: 0 0 6px; }
+  .alt { font-family: system-ui, sans-serif; color: #5f5d57; margin: 0 0 28px; max-width: 62ch; }
+  .kayit {
+    font-family: ui-monospace, Consolas, monospace; font-size: 13px;
+    background: #17181c; color: #d9d7d1; padding: 16px; border-radius: 10px;
+    margin-top: 28px; white-space: pre-wrap; min-height: 90px;
+  }
+  .uyari {
+    font-family: system-ui, sans-serif; font-size: 13.5px; color: #5f5d57;
+    border-left: 2px solid #c9c4b9; padding-left: 14px; margin: 24px 0;
+  }
+</style>
+</head>
+<body>
+<div class="sayfa">
+  <h1>Randevu widget demosu</h1>
+  <p class="alt">
+    Bu sayfanın kendi CSS'i bilerek saldırgan: bütün butonları kırmızıya boyayan,
+    yazı tipini Comic Sans yapan, inputlara macenta kesikli çerçeve koyan kurallar var.
+    Widget bunların hiçbirinden etkilenmiyor, çünkü Shadow DOM içinde çalışıyor.
+  </p>
+
+  <button>Sayfanın kendi butonu (bozuk görünmesi normal)</button>
+
+  <div id="randevu" style="margin-top:28px"></div>
+
+  <p class="uyari">
+    Takvim bellekte tutuluyor, hiçbir sunucuya gidilmiyor. Sayfayı yenileyince
+    yazılan randevu kaybolur.
+  </p>
+
+  <div class="kayit" id="kayit">Randevu yazıldığında olay burada görünecek.</div>
+</div>
+
+<script type="module">
+import { randevuWidget } from "../src/randevu-widget.js";
+
+/* ── Bellekte çalışan adaptör ────────────────────────────────────────────────
+   Gerçek kurulumda bu iki fonksiyon Google Takvim'e, Cal.com'a ya da kendi
+   API'nize gider. Widget hangisi olduğunu bilmiyor ve bilmemeli. */
+const defter = [];
+
+/* Demoda takvim boş görünmesin diye birkaç dolu aralık: yarın öğleden sonrası. */
+const yarin = new Date(Date.now() + 86400000);
+yarin.setHours(14, 0, 0, 0);
+defter.push({ bas: yarin.getTime(), bit: yarin.getTime() + 5400000 });
+
+const adaptor = {
+  async dolu(bas, bit) {
+    await new Promise((r) => setTimeout(r, 250)); // gerçek ağ gecikmesi gibi
+    return defter.filter((d) => d.bas < bit && bas < d.bit);
+  },
+  async yaz(randevu) {
+    await new Promise((r) => setTimeout(r, 400));
+    const bit = randevu.epoch + randevu.dakika * 60000;
+    /* Yazmadan önce SON kontrol. Okuma ile yazma arasında saniyeler geçti ve
+       o saat bu arada dolmuş olabilir. Gerçek kurulumda da bu kontrol şart. */
+    if (defter.some((d) => randevu.epoch < d.bit && d.bas < bit)) {
+      return { ok: false, sebep: "O saat az önce doldu. Başka bir saat seçin." };
+    }
+    defter.push({ bas: randevu.epoch, bit });
+    yaz(randevu);
+    return { ok: true };
+  },
+};
+
+const kayit = document.getElementById("kayit");
+function yaz(r) {
+  kayit.textContent =
+    `randevu:olustu\n` +
+    `  saat     ${r.iso} (${r.saatDilimi})\n` +
+    `  ad       ${r.ad}\n` +
+    `  iletişim ${r.iletisim}\n` +
+    `  hizmet   ${r.hizmet}`;
+}
+
+randevuWidget(document.getElementById("randevu"), {
+  isletme: "Örnek Klinik, Kadıköy",
+  calisma: {
+    saatDilimi: "Europe/Istanbul",
+    acilis: "09:00",
+    kapanis: "18:00",
+    acikGunler: ["mon", "tue", "wed", "thu", "fri", "sat"],
+    slotDakika: 30,
+  },
+  hizmetler: ["Kontrol", "Diş temizliği", "İmplant görüşmesi"],
+  adaptor,
+});
+</script>
+</body>
+</html>

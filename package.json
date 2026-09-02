@@ -1,0 +1,11 @@
+{
+  "name": "randevu-widget",
+  "version": "0.1.0",
+  "description": "Herhangi bir siteye tek script etiketiyle eklenen randevu widget'i. Bagimliligi yok, Shadow DOM icinde calisir, saat dilimini isletmenin saatiyle hesaplar.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": ["randevu", "booking", "widget", "appointment", "timezone", "shadow-dom"]
+}
