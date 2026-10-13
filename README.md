@@ -7,6 +7,10 @@ No dependencies, no build step, runs inside a Shadow DOM.
 
 **[Live demo](https://kerem-aydin.github.io/randevu-widget/demo/)**
 
+<a href="https://kerem-aydin.github.io/randevu-widget/demo/"><img src="docs/demo.jpg" alt="The widget on a page whose own CSS paints every button red in Comic Sans; the widget is unaffected" width="560"></a>
+
+<sub>The demo page's own CSS is hostile on purpose (red buttons, Comic Sans). The widget is untouched because it lives in a Shadow DOM.</sub>
+
 ```html
 <div id="randevu"></div>
 <script type="module">
