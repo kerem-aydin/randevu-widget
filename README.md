@@ -1,5 +1,7 @@
 # randevu-widget
 
+[![test](https://github.com/kerem-aydin/randevu-widget/actions/workflows/test.yml/badge.svg)](https://github.com/kerem-aydin/randevu-widget/actions/workflows/test.yml) ![dependencies: 0](https://img.shields.io/badge/dependencies-0-brightgreen) ![license: MIT](https://img.shields.io/badge/license-MIT-blue)
+
 A booking box you drop into any website with **a single script tag**.
 No dependencies, no build step, runs inside a Shadow DOM.
 
