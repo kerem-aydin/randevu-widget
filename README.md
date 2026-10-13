@@ -46,7 +46,8 @@ unaffected, and a test measures that. "It looks broken on my site" is the number
 one support ticket in this category of product.
 
 **No dependencies.** Making a hair salon install React into their WordPress
-theme creates a bigger problem than it solves. One file, `<script type="module">`.
+theme creates a bigger problem than it solves. Two small files, no build step,
+`<script type="module">`.
 
 **The clock belongs to the business.** `new Date("2026-09-10T14:00")` reads as
 Berlin in a visitor's browser and as UTC on a server. Both are wrong, and the
@@ -67,10 +68,23 @@ yaz({ iso, epoch, saatDilimi, dakika, ad, iletisim, hizmet })
 Google Calendar, Cal.com, your own API, or an email queue — all of them go
 behind these two functions.
 
-**No confirmation is shown when `ok: false`.** The sentence "your appointment is
-confirmed" is only rendered after the adapter returns success, and then the list
-refreshes. Showing a confirmation for a booking that was never written is the
-worst thing this product can do: the person arrives and there is no record.
+**A confirmation needs `ok: true`, nothing less.** "Your appointment is
+confirmed" is only rendered when the adapter returns exactly `ok: true`; a
+missing or ambiguous answer counts as a failure. On failure the error is shown,
+the slot list is fetched again and a slot that has filled up disappears.
+Showing a confirmation for a booking that was never written is the worst thing
+this product can do: the person arrives and there is no record.
+
+**A broken calendar answer shows no slots.** If `dolu` returns anything other
+than an array of valid ranges (an error object, `null`, a range without
+numbers), the widget says the calendar could not be reached. Treating it as an
+empty calendar would offer busy hours as free.
+
+**The slot being saved cannot change.** While a booking is being written the
+slot buttons are disabled, and the confirmation is built from the slot that was
+sent, not from whatever is selected afterwards. Slots are identified by their
+instant (epoch), so the repeated hour on the night clocks go back is two
+different slots, not one.
 
 ## Theming
 
@@ -89,7 +103,7 @@ string can be replaced through the `metin` option.
 
 ```bash
 node --test test/*.test.js     # slot arithmetic: 12 cases, no browser
-node test/demo-dogrula.mjs     # interface: 11 cases, real browser (needs puppeteer-core)
+npm run test:ui                # interface: 15 cases, real browser, also in CI
 ```
 
 The arithmetic tests cover daylight saving transitions, partial overlaps, a slot
@@ -145,7 +159,8 @@ var. Widget hiçbirinden etkilenmiyor ve test bunu ölçüyor. Bir widget'ın
 "müşteride bozuk görünmesi" bu işin bir numaralı destek talebidir.
 
 **Bağımlılık yok.** Bir kuaförün WordPress temasına React kurdurmak,
-çözdüğünden büyük bir sorun getirir. Tek dosya, `<script type="module">`.
+çözdüğünden büyük bir sorun getirir. İki küçük dosya, derleme adımı yok,
+`<script type="module">`.
 
 **Saat dilimi işletmenin saati.** `new Date("2026-09-10T14:00")` ziyaretçinin
 tarayıcısında Berlin, sunucuda UTC okunur; ikisi de yanlıştır ve hata "randevu
@@ -166,10 +181,20 @@ yaz({ iso, epoch, saatDilimi, dakika, ad, iletisim, hizmet })
 Google Takvim, Cal.com, kendi API'niz ya da bir e-posta kuyruğu: hepsi bu iki
 fonksiyonun arkasına girer.
 
-**`ok: false` geldiğinde onay gösterilmez.** "Randevunuz oluşturuldu" cümlesi
-yalnız adaptör başarı döndüğünde kurulur, ve liste tazelenir. Yazılamadığı
-hâlde onay göstermek, bu ürünün yapabileceği en kötü şeydir: kişi gelir, kaydı
-yoktur.
+**Onay için `ok: true` şart, eksiği değil.** "Randevunuz oluşturuldu" cümlesi
+yalnız adaptör tam olarak `ok: true` döndüğünde kurulur; eksik ya da belirsiz
+cevap başarısızlık sayılır. Başarısızlıkta hata gösterilir, saatler yeniden
+getirilir ve dolan saat listeden düşer. Yazılamadığı hâlde onay göstermek, bu
+ürünün yapabileceği en kötü şeydir: kişi gelir, kaydı yoktur.
+
+**Bozuk takvim cevabında saat gösterilmez.** `dolu` geçerli aralıklardan oluşan
+bir dizi dışında bir şey döndürürse (hata nesnesi, `null`, sayısı olmayan bir
+aralık) widget takvime ulaşılamadığını söyler. Bunu boş takvim saymak, dolu
+saatleri boş göstermek demektir.
+
+**Yazılan saat değişmez.** Randevu yazılırken saat düğmeleri kilitlenir ve onay,
+sonradan seçilene göre değil gönderilen saate göre kurulur. Saatler anla
+(epoch) tanınır; saatlerin geri alındığı gece tekrar eden saat iki ayrı slottur.
 
 ### Görünüm
 
@@ -188,7 +213,7 @@ Bütün metinler `metin` seçeneğiyle değiştirilebilir.
 
 ```bash
 node --test test/*.test.js     # slot aritmetiği: 12 vaka, tarayıcısız
-node test/demo-dogrula.mjs     # arayüz: 11 vaka, gerçek tarayıcı (puppeteer-core gerekir)
+npm run test:ui                # arayüz: 15 vaka, gerçek tarayıcı, CI'de de koşar
 ```
 
 Aritmetik testleri arasında yaz saati geçişi, kısmi çakışma, kapanışa taşan

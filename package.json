@@ -5,7 +5,18 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "test:ui": "node test/demo-dogrula.mjs"
   },
-  "keywords": ["randevu", "booking", "widget", "appointment", "timezone", "shadow-dom"]
+  "keywords": [
+    "randevu",
+    "booking",
+    "widget",
+    "appointment",
+    "timezone",
+    "shadow-dom"
+  ],
+  "devDependencies": {
+    "puppeteer-core": "23.11.1"
+  }
 }

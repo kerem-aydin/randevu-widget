@@ -40,7 +40,7 @@ await new Promise((r) => sunucu.listen(4173, r));
 const CHROME =
   process.env.CHROME_PATH ?? "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 
-const browser = await puppeteer.launch({ executablePath: CHROME, headless: "new" });
+const browser = await puppeteer.launch({ executablePath: CHROME, headless: "new", args: process.env.CI ? ["--no-sandbox"] : [] });
 const sayfa = await browser.newPage();
 await sayfa.setViewport({ width: 1200, height: 900 });
 
@@ -109,7 +109,7 @@ yaz("saat seçilebiliyor", tamAkis.secildi, tamAkis.saat);
 const gonderim = await golge(`
   golge.querySelector("#rw-ad").value = "Test Kisi";
   golge.querySelector("#rw-ad").dispatchEvent(new Event("input", { bubbles: true }));
-  golge.querySelector("#rw-iletisim").value = "05331112233";
+  golge.querySelector("#rw-iletisim").value = "05001112233";
   golge.querySelector("#rw-iletisim").dispatchEvent(new Event("input", { bubbles: true }));
   golge.querySelector(".gonder").click();
   return new Promise((r) => setTimeout(() => r({
@@ -121,6 +121,98 @@ yaz("randevu oluşturuldu", gonderim.basarili, gonderim.metin.replace(/\s+/g, " 
 
 const olay = await sayfa.evaluate(() => document.getElementById("kayit").textContent);
 yaz("randevu:olustu olayı yayıldı", olay.includes("randevu:olustu"), olay.split("\n")[1]?.trim() ?? "");
+
+/* ── Kötü günler: adaptör bozuk, belirsiz ya da yavaş cevap verirse ─────────────
+   Her senaryo aynı sayfada, kendi adaptörüyle ayrı bir widget kurar. */
+await sayfa.evaluate(() => {
+  const bekle = (ms) => new Promise((r) => setTimeout(r, ms));
+  window.__kur = async (adaptor) => {
+    const { randevuWidget } = await import("/src/randevu-widget.js");
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    randevuWidget(el, {
+      isletme: "Test",
+      calisma: { saatDilimi: "Europe/Istanbul", acilis: "09:00", kapanis: "18:00",
+                 acikGunler: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"], slotDakika: 30 },
+      adaptor,
+    });
+    await bekle(150);
+    return el.shadowRoot;
+  };
+  window.__doldur = (g) => {
+    for (const [id, v] of [["#rw-ad", "Test Kisi"], ["#rw-iletisim", "05001112233"]]) {
+      g.querySelector(id).value = v;
+      g.querySelector(id).dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  };
+  window.__bekle = bekle;
+});
+
+/* Takvim hata nesnesi döndürürse boş takvim sayılmamalı: dolu saatler müsait görünür. */
+const bozukTakvim = await sayfa.evaluate(async () => {
+  const sonuc = [];
+  for (const cevap of [{ hata: "yetki yok" }, [{ bas: "dun", bit: 5 }], null]) {
+    const g = await window.__kur({ dolu: async () => cevap, yaz: async () => ({ ok: true }) });
+    sonuc.push({ slot: g.querySelectorAll(".slot").length, hata: !!g.querySelector(".hata") });
+  }
+  return sonuc;
+});
+yaz("bozuk takvim yanıtında saat gösterilmiyor",
+    bozukTakvim.every((s) => s.slot === 0 && s.hata), JSON.stringify(bozukTakvim));
+
+/* Adaptör "ok": "false" gibi belirsiz bir şey dönerse onay ekranı çıkmamalı. */
+const belirsiz = await sayfa.evaluate(async () => {
+  const g = await window.__kur({ dolu: async () => [], yaz: async () => ({ ok: "false" }) });
+  g.querySelector(".slot").click();
+  window.__doldur(g);
+  g.querySelector(".gonder").click();
+  await window.__bekle(300);
+  return { basarili: !!g.querySelector(".basarili"), hata: !!g.querySelector(".hata") };
+});
+yaz("belirsiz cevapta onay gösterilmiyor", !belirsiz.basarili && belirsiz.hata, JSON.stringify(belirsiz));
+
+/* Yazma "saat doldu" derse: onay yok, hata var, o saat listeden düşmüş ve seçim kalkmış. */
+const doldu = await sayfa.evaluate(async () => {
+  const defter = [];
+  const g = await window.__kur({
+    dolu: async () => defter.slice(),
+    yaz: async (r) => { defter.push({ bas: r.epoch, bit: r.epoch + 1800000 }); return { ok: false, sebep: "O saat az önce doldu." }; },
+  });
+  const ilk = g.querySelector(".slot");
+  const epoch = ilk.dataset.epoch;
+  ilk.click();
+  window.__doldur(g);
+  g.querySelector(".gonder").click();
+  await window.__bekle(400);
+  return {
+    basarili: !!g.querySelector(".basarili"),
+    hata: [...g.querySelectorAll(".hata")].map((h) => h.textContent).join(" "),
+    halaListede: !!g.querySelector(`.slot[data-epoch="${epoch}"]`),
+    seciliVar: !!g.querySelector('.slot[aria-pressed="true"]'),
+  };
+});
+yaz("dolan saat listeden düşüyor, seçim kalkıyor",
+    !doldu.basarili && /doldu/.test(doldu.hata) && !doldu.halaListede && !doldu.seciliVar, JSON.stringify(doldu));
+
+/* Gönderim sürerken başka saate tıklanırsa: yazılan ve onayda görünen saat ilk seçilen kalmalı. */
+const yaris = await sayfa.evaluate(async () => {
+  let yazilan = null;
+  const g = await window.__kur({
+    dolu: async () => [],
+    yaz: async (r) => { yazilan = r.epoch; await window.__bekle(300); return { ok: true }; },
+  });
+  const [birinci, ikinci] = g.querySelectorAll(".slot");
+  const beklenen = { epoch: Number(birinci.dataset.epoch), saat: birinci.textContent.trim() };
+  birinci.click();
+  window.__doldur(g);
+  g.querySelector(".gonder").click();
+  await window.__bekle(50);
+  g.querySelectorAll(".slot")[1]?.click();
+  await window.__bekle(450);
+  const onay = (g.querySelector(".basarili") || {}).textContent || "";
+  return { yazilanDogru: yazilan === beklenen.epoch, onayDogru: onay.includes(beklenen.saat), ikinci: ikinci.textContent.trim(), onay: onay.replace(/\s+/g, " ").trim() };
+});
+yaz("gönderim sürerken saat değişmiyor", yaris.yazilanDogru && yaris.onayDogru, yaris.onay);
 
 yaz("konsolda hata yok", hatalar.length === 0, hatalar.slice(0, 2).join(" | "));
 

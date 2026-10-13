@@ -21,13 +21,15 @@
  * neredeyse her zaman budur.
  *
  * ── Neden bağımlılık yok ─────────────────────────────────────────────────────
- * Tek dosya, derleme adımı yok. Bir kuaförün WordPress temasına React
+ * İki küçük dosya, derleme adımı yok. Bir kuaförün WordPress temasına React
  * kurdurmak, çözdüğünden büyük bir sorun getirir.
  *
  * ── Adaptör ──────────────────────────────────────────────────────────────────
  * Widget hiçbir sunucuya BAĞLI DEĞİL. İki fonksiyon istiyor:
  *   dolu(bas, bit) -> [{bas, bit}]     takvimdeki dolu aralıklar (epoch ms)
  *   yaz(randevu)   -> {ok:true} | {ok:false, sebep}
+ * Takvim yanıtı dizi değilse ya da bir aralık bozuksa saat gösterilmez; onay
+ * yalnız `ok === true` ile kurulur. Belirsiz cevap, olumsuz cevap sayılır.
  * Google Takvim, Cal.com, kendi API'niz ya da bir e-posta: hepsi bu iki
  * fonksiyonun arkasına girer. `demo/` içinde bellekte çalışan bir örnek var.
  */
@@ -200,8 +202,9 @@ export function randevuWidget(hedef, ayar = {}) {
             <p class="gun-ad">${kacir(g.etiket)}</p>
             <div class="secenekler" role="group" aria-label="${kacir(g.etiket)}">
               ${g.slotlar.map((s) => `
-                <button type="button" class="slot" data-iso="${s.iso}"
-                  aria-pressed="${durum.slot?.iso === s.iso}">${s.saat}</button>`).join("")}
+                <button type="button" class="slot" data-epoch="${s.epoch}"
+                  aria-pressed="${durum.slot?.epoch === s.epoch}"
+                  ${durum.gonderiliyor ? "disabled" : ""}>${s.saat}</button>`).join("")}
             </div>
           </div>`).join("")}
         ${gunler.length > durum.genisGun
@@ -226,12 +229,17 @@ export function randevuWidget(hedef, ayar = {}) {
       ${durum.alanHatalari.genel ? `<p class="hata">${kacir(durum.alanHatalari.genel)}</p>` : ""}
     `;
 
+    /* Gönderim sürerken seçim değişmez: yazılan saat ile onayda görünen saat
+       ayrışmasın. */
     kutu.querySelectorAll("[data-hizmet]").forEach((b) =>
-      b.addEventListener("click", () => { durum.hizmet = b.dataset.hizmet; ciz(); }));
+      b.addEventListener("click", () => { if (durum.gonderiliyor) return; durum.hizmet = b.dataset.hizmet; ciz(); }));
 
-    kutu.querySelectorAll("[data-iso]").forEach((b) =>
+    /* Slot kimliği epoch, duvar saati değil. Yaz saatinden kışa geçilen gece
+       aynı "01:30" iki kez yaşanır; iso ile seçmek ikisinden ilkini seçer. */
+    kutu.querySelectorAll("[data-epoch]").forEach((b) =>
       b.addEventListener("click", () => {
-        durum.slot = durum.slotlar.find((s) => s.iso === b.dataset.iso) ?? null;
+        if (durum.gonderiliyor) return;
+        durum.slot = durum.slotlar.find((s) => s.epoch === Number(b.dataset.epoch)) ?? null;
         durum.alanHatalari = {};
         ciz();
       }));
@@ -253,9 +261,12 @@ export function randevuWidget(hedef, ayar = {}) {
     const simdi = Date.now();
     try {
       const dolu = await adaptor.dolu(simdi, simdi + 21 * 86400000);
+      /* Dizi olmayan yanıt (ör. {hata: "..."}) boş takvim DEĞİLDİR. Boş sayılırsa
+         dolu saatler müsait görünür. */
+      if (!Array.isArray(dolu) || !dolu.every(gecerliAralik)) throw new Error("takvim yanıtı bozuk");
       durum.slotlar = bosSlotlar({
         calisma,
-        dolu: Array.isArray(dolu) ? dolu : [],
+        dolu,
         simdi,
         gun: ayar.gun ?? 14,
         enErkenDk: ayar.enErkenDakika ?? 60,
@@ -267,6 +278,8 @@ export function randevuWidget(hedef, ayar = {}) {
       durum.slotlar = [];
       durum.hata = metin.hataTakvim;
     }
+    /* Seçili saat yeni listede yoksa (dolmuşsa) seçim kalkar. */
+    if (durum.slot && !durum.slotlar.some((s) => s.epoch === durum.slot.epoch)) durum.slot = null;
     durum.yukleniyor = false;
     ciz();
   }
@@ -278,13 +291,15 @@ export function randevuWidget(hedef, ayar = {}) {
     if (!gecerliIletisim(durum.iletisim)) durum.alanHatalari.iletisim = metin.gecersizIletisim;
     if (Object.keys(durum.alanHatalari).length) { ciz(); return; }
 
+    /* Gönderilen saat burada sabitlenir; onay bu kayıttan kurulur. */
+    const secilen = durum.slot;
     durum.gonderiliyor = true;
     ciz();
     let sonuc;
     try {
       sonuc = await adaptor.yaz({
-        iso: durum.slot.iso,
-        epoch: durum.slot.epoch,
+        iso: secilen.iso,
+        epoch: secilen.epoch,
         saatDilimi: calisma.saatDilimi,
         dakika: calisma.slotDakika ?? 30,
         ad: durum.ad.trim(),
@@ -299,12 +314,12 @@ export function randevuWidget(hedef, ayar = {}) {
     /* "Randevunuz oluşturuldu" cümlesi ancak adaptör ok dediğinde kurulur.
        Yazılamadığı hâlde onay göstermek, bu ürünün yapabileceği en kötü şey:
        kişi gelir, kaydı yoktur. */
-    if (sonuc?.ok) {
-      const g = gunlereBol([durum.slot], calisma.saatDilimi, ayar.dil ?? "tr-TR")[0];
-      durum.tamam = { etiket: `${g.etiket}, ${durum.slot.saat}`, hizmet: durum.hizmet };
-      hedef.dispatchEvent(new CustomEvent("randevu:olustu", { detail: { ...durum.slot, ad: durum.ad }, bubbles: true }));
+    if (sonuc?.ok === true) {
+      const g = gunlereBol([secilen], calisma.saatDilimi, ayar.dil ?? "tr-TR")[0];
+      durum.tamam = { etiket: `${g.etiket}, ${secilen.saat}`, hizmet: durum.hizmet };
+      hedef.dispatchEvent(new CustomEvent("randevu:olustu", { detail: { ...secilen, ad: durum.ad }, bubbles: true }));
     } else {
-      durum.alanHatalari.genel = sonuc?.sebep || metin.hataYazma;
+      durum.alanHatalari.genel = (typeof sonuc?.sebep === "string" && sonuc.sebep) || metin.hataYazma;
       /* Saat dolduysa liste tazelenir; eski liste tekrar aynı hatayı verir. */
       await saatleriGetir();
       return;
@@ -319,6 +334,10 @@ export function randevuWidget(hedef, ayar = {}) {
     yenile: saatleriGetir,
     yokEt: () => { golge.innerHTML = ""; },
   };
+}
+
+function gecerliAralik(a) {
+  return a && Number.isFinite(a.bas) && Number.isFinite(a.bit) && a.bas < a.bit;
 }
 
 function kacir(s) {

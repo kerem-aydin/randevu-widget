@@ -79,20 +79,20 @@ const adaptor = {
       return { ok: false, sebep: "O saat az önce doldu. Başka bir saat seçin." };
     }
     defter.push({ bas: randevu.epoch, bit });
-    yaz(randevu);
     return { ok: true };
   },
 };
 
+/* Sayfa, widget'ın yaydığı olayı dinliyor. Kendi sitenizde analitik, teşekkür
+   sayfası ya da bildirim buraya bağlanır. */
 const kayit = document.getElementById("kayit");
-function yaz(r) {
+document.getElementById("randevu").addEventListener("randevu:olustu", (e) => {
+  const r = e.detail;
   kayit.textContent =
     `randevu:olustu\n` +
-    `  saat     ${r.iso} (${r.saatDilimi})\n` +
-    `  ad       ${r.ad}\n` +
-    `  iletişim ${r.iletisim}\n` +
-    `  hizmet   ${r.hizmet}`;
-}
+    `  saat     ${r.iso}\n` +
+    `  ad       ${r.ad}`;
+});
 
 randevuWidget(document.getElementById("randevu"), {
   isletme: "Örnek Klinik, Kadıköy",

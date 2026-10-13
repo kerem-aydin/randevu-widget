@@ -14,3 +14,16 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: npm test
+  ui:
+    # The interface in a real browser: shadow DOM isolation, broken calendar
+    # answers, a write that fails, a slot clicked while the first one is saving.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-package-lock
+      - run: npm run test:ui
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
